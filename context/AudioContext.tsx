@@ -13,7 +13,7 @@ interface AudioContextType {
 
 const SOUND_EFFECTS_KEY = 'ingo_sound_effects_enabled';
 const MUSIC_KEY = 'ingo_music_enabled';
-const MUSIC_TRACKS = ['m1', 'm2'];
+const MUSIC_TRACKS = ['m1', 'm2', 'm3', 'm4'];
 
 const effectSourceMap: Record<EffectName, string[]> = {
   click: ['/audio/click.ogg', '/audio/click.mp3'],
