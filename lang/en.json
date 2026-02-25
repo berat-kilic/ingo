@@ -1,0 +1,16 @@
+{
+  "competitive_quiz_arena": "Competitive Quiz Arena",
+  "pending": "Pending...",
+  "join_class": "Join Class",
+  "warning": "Warning",
+  "error": "Error",
+  "user_id_required": "User ID required",
+  "auth_delete_failed": "Auth user could not be deleted",
+  "ban_success": "User banned successfully",
+  "delete_success": "User deleted successfully",
+  "settings": "Settings",
+  "language": "Language",
+  "select_language": "Select Language",
+  "turkish": "Turkish",
+  "english": "English"
+}

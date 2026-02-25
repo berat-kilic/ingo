@@ -1,0 +1,16 @@
+{
+  "competitive_quiz_arena": "Rekabetçi Quiz Arenası",
+  "pending": "Bekleniyor...",
+  "join_class": "Sınıfa Katıl",
+  "warning": "Uyarı",
+  "error": "Hata",
+  "user_id_required": "Kullanıcı ID gerekli",
+  "auth_delete_failed": "Auth kullanıcısı silinemedi",
+  "ban_success": "Kullanıcı başarıyla banlandı",
+  "delete_success": "Kullanıcı başarıyla silindi",
+  "settings": "Ayarlar",
+  "language": "Dil",
+  "select_language": "Dil Seç",
+  "turkish": "Türkçe",
+  "english": "İngilizce"
+}
