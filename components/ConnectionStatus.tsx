@@ -10,6 +10,7 @@ export const ConnectionStatus: React.FC = () => {
   const [reloadCheckTick, setReloadCheckTick] = useState(0);
   const prevConnectedRef = useRef(true);
   const reloadTriggeredRef = useRef(false);
+  const reloadTimeoutRef = useRef<number | null>(null);
   const hasConfirmedConnectionRef = useRef(false);
   const location = useLocation();
   const isGameArena = location.pathname === '/game';
@@ -54,8 +55,9 @@ export const ConnectionStatus: React.FC = () => {
     // 3. Event Listeners for Tab Switching
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        const state = supabase.realtime.connectionState;
-        if (state !== 'OPEN') {
+        const rawState = supabase.realtime.connectionState;
+        const state = (typeof rawState === 'string' ? rawState : '').toLowerCase();
+        if (state !== 'open' && state !== 'connecting') {
           setIsConnected(false);
           supabase.realtime.connect();
         } else {
@@ -81,6 +83,10 @@ export const ConnectionStatus: React.FC = () => {
 
     return () => {
       clearInterval(intervalId);
+      if (reloadTimeoutRef.current !== null) {
+        window.clearTimeout(reloadTimeoutRef.current);
+        reloadTimeoutRef.current = null;
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -101,6 +107,10 @@ export const ConnectionStatus: React.FC = () => {
 
     if (isConnected) {
       reloadTriggeredRef.current = false;
+      if (reloadTimeoutRef.current !== null) {
+        window.clearTimeout(reloadTimeoutRef.current);
+        reloadTimeoutRef.current = null;
+      }
     }
 
     // Show popup only when connection drops during game.
@@ -119,7 +129,16 @@ export const ConnectionStatus: React.FC = () => {
     ) {
       if (!reloadTriggeredRef.current) {
         reloadTriggeredRef.current = true;
-        window.location.reload();
+        reloadTimeoutRef.current = window.setTimeout(() => {
+          const rawState = supabase.realtime.connectionState;
+          const state = (typeof rawState === 'string' ? rawState : '').toLowerCase();
+          if (state !== 'open' && state !== 'connecting') {
+            window.location.reload();
+          } else {
+            reloadTriggeredRef.current = false;
+          }
+          reloadTimeoutRef.current = null;
+        }, 1500);
       }
     }
 
