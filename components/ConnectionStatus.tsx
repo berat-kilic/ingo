@@ -33,6 +33,19 @@ export const ConnectionStatus: React.FC = () => {
     window.dispatchEvent(new CustomEvent('ingo:realtime-reconnect'));
   };
 
+  const getRealtimeState = () => {
+    try {
+      const realtimeAny = supabase.realtime as unknown as {
+        connectionState?: string | (() => string);
+      };
+      const value = realtimeAny.connectionState;
+      const rawState = typeof value === 'function' ? value.call(supabase.realtime) : value;
+      return (typeof rawState === 'string' ? rawState : '').toLowerCase();
+    } catch {
+      return '';
+    }
+  };
+
   useEffect(() => {
     const pingChannel = supabase.channel('_ping_keepalive');
     pingChannel.subscribe((status) => {
@@ -44,9 +57,7 @@ export const ConnectionStatus: React.FC = () => {
     });
 
     const checkConnection = () => {
-      const rawState = supabase.realtime.connectionState;
-      const state = typeof rawState === 'string' ? rawState : '';
-      const normalizedState = state.toLowerCase();
+      const normalizedState = getRealtimeState();
 
       if (normalizedState === 'open' || normalizedState === 'connecting') {
         setIsConnected(true);
@@ -60,8 +71,7 @@ export const ConnectionStatus: React.FC = () => {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        const rawState = supabase.realtime.connectionState;
-        const state = (typeof rawState === 'string' ? rawState : '').toLowerCase();
+        const state = getRealtimeState();
         if (state !== 'open' && state !== 'connecting') {
           setIsConnected(false);
           supabase.realtime.connect();
@@ -132,8 +142,7 @@ export const ConnectionStatus: React.FC = () => {
         reconnectTriggeredRef.current = true;
         reconnectTimeoutRef.current = window.setTimeout(() => {
           forceRealtimeReconnect();
-          const rawState = supabase.realtime.connectionState;
-          const state = (typeof rawState === 'string' ? rawState : '').toLowerCase();
+          const state = getRealtimeState();
           if (state !== 'open' && state !== 'connecting') {
             supabase.realtime.connect();
           } else {
