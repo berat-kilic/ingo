@@ -67,5 +67,7 @@ export interface RoomPlayer {
   score: number;
   is_host: boolean;
   last_answer_correct?: boolean | null;
+  last_answer_partial?: boolean | null;
+  last_answer_similarity?: number | null;
   last_answer_val?: string;
 }

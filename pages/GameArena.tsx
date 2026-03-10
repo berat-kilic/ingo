@@ -74,12 +74,12 @@ const GameArena: React.FC = () => {
     lastResolvedQuestionIdRef.current = currentQuestion.id;
     stopEffect('time');
 
-    if (myPlayer.last_answer_correct) {
+    if (myPlayer.last_answer_correct || myPlayer.last_answer_partial) {
       playEffect('correct', { restart: true });
     } else {
       playEffect('wrong', { restart: true });
     }
-  }, [currentQuestion?.id, myPlayer?.last_answer_correct, playEffect, room?.status, stopEffect, timeExpired]);
+  }, [currentQuestion?.id, myPlayer?.last_answer_correct, myPlayer?.last_answer_partial, playEffect, room?.status, stopEffect, timeExpired]);
 
   useEffect(() => {
     if (room?.status === 'waiting') {
@@ -211,6 +211,10 @@ const GameArena: React.FC = () => {
 
 
   const isCorrect = myPlayer?.last_answer_correct === true;
+  const isPartial = myPlayer?.last_answer_partial === true;
+  const similarityPercent = typeof myPlayer?.last_answer_similarity === 'number'
+    ? Math.round(myPlayer.last_answer_similarity * 100)
+    : null;
   
   const rankedPlayers = [...room.players]
     .sort((a,b) => b.score - a.score);
@@ -341,11 +345,22 @@ const GameArena: React.FC = () => {
                             className="absolute bottom-20 md:bottom-0 flex flex-col items-center w-full z-10 pointer-events-none"
                         >
                             <div className={`
-                                flex items-center gap-4 px-6 py-3 rounded-full border backdrop-blur-md shadow-xl
-                                ${isCorrect ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-danger/20 border-danger text-danger'}
+                                flex flex-col items-center gap-2 px-6 py-3 rounded-2xl border backdrop-blur-md shadow-xl
+                                ${isCorrect ? 'bg-green-500/20 border-green-500 text-green-400' : ''}
+                                ${!isCorrect && isPartial ? 'bg-yellow-500/20 border-yellow-500 text-yellow-300' : ''}
+                                ${!isCorrect && !isPartial ? 'bg-danger/20 border-danger text-danger' : ''}
                             `}>
-                                {isCorrect ? <CheckCircle className="w-6 h-6" /> : <XCircle className="w-6 h-6" />}
-                                <span className="text-xl font-bold">{isCorrect ? t('correct') : t('incorrect')}</span>
+                                <div className="flex items-center gap-4">
+                                    {isCorrect ? <CheckCircle className="w-6 h-6" /> : (isPartial ? <CheckCircle className="w-6 h-6" /> : <XCircle className="w-6 h-6" />)}
+                                    <span className="text-xl font-bold">
+                                        {isCorrect ? t('correct') : (isPartial ? t('partialCorrect') : t('incorrect'))}
+                                    </span>
+                                </div>
+                                {isPartial && similarityPercent !== null && (
+                                    <span className="text-xs font-mono text-yellow-200/90">
+                                        {t('similarityScore')}: %{similarityPercent}
+                                    </span>
+                                )}
                             </div>
                         </motion.div>
                     )}

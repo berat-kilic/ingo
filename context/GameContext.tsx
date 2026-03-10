@@ -29,6 +29,14 @@ const levenshteinDistance = (a: string, b: string): number => {
 const normalizeText = (input: string): string => {
   if (!input) return '';
   let text = input.trim().toLocaleLowerCase('tr-TR');
+  text = text.replace(/[^\p{L}\p{N}\s]/gu, ' ');
+  text = text.replace(/\s+/g, ' ').trim();
+  return text;
+};
+
+const normalizeLoose = (input: string): string => {
+  if (!input) return '';
+  let text = input.trim().toLocaleLowerCase('tr-TR');
   text = text.replace(/ı/g, 'i');
   text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   text = text.replace(/[^\p{L}\p{N}\s]/gu, ' ');
@@ -50,8 +58,8 @@ const levenshteinSimilarity = (a: string, b: string): number => {
 };
 
 const tokenSimilarity = (a: string, b: string): number => {
-  const tokensA = normalizeText(a).split(' ').filter(Boolean);
-  const tokensB = normalizeText(b).split(' ').filter(Boolean);
+  const tokensA = normalizeLoose(a).split(' ').filter(Boolean);
+  const tokensB = normalizeLoose(b).split(' ').filter(Boolean);
   if (tokensA.length === 0 || tokensB.length === 0) return 0;
   const setA = new Set(tokensA);
   const setB = new Set(tokensB);
@@ -62,24 +70,17 @@ const tokenSimilarity = (a: string, b: string): number => {
 };
 
 const phoneticKey = (input: string): string => {
-  let text = normalizeText(input).replace(/\s+/g, '');
+  let text = normalizeLoose(input).replace(/\s+/g, '');
   if (!text) return '';
-  text = text
-    .replace(/[çc]/g, 'c')
-    .replace(/[ğg]/g, 'g')
-    .replace(/[şs]/g, 's')
-    .replace(/[öo]/g, 'o')
-    .replace(/[üu]/g, 'u')
-    .replace(/[ıi]/g, 'i');
   text = text.replace(/[aeiou]/g, '');
   text = text.replace(/h/g, '');
   text = text.replace(/(.)\1+/g, '$1');
   return text;
 };
 
-const scoreTextAnswer = (playerAnswer: string, correctAnswer: string): { isCorrect: boolean; points: number } => {
+const scoreTextAnswer = (playerAnswer: string, correctAnswer: string): { isCorrect: boolean; isPartial: boolean; points: number; similarity: number } => {
   const normalizedPlayer = normalizeText(playerAnswer);
-  if (!normalizedPlayer) return { isCorrect: false, points: 0 };
+  if (!normalizedPlayer) return { isCorrect: false, isPartial: false, points: 0, similarity: 0 };
 
   const alternatives = splitAlternatives(correctAnswer)
     .map(a => ({ raw: a, norm: normalizeText(a) }))
@@ -87,37 +88,37 @@ const scoreTextAnswer = (playerAnswer: string, correctAnswer: string): { isCorre
 
   for (const alt of alternatives) {
     if (normalizedPlayer === alt.norm) {
-      return { isCorrect: true, points: 15 };
+      return { isCorrect: true, isPartial: false, points: 15, similarity: 1 };
     }
   }
 
   let bestOverall = 0;
   let bestLev = 0;
   let bestLen = 0;
+  const loosePlayer = normalizeLoose(normalizedPlayer);
   for (const alt of alternatives) {
-    const lev = levenshteinSimilarity(normalizedPlayer, alt.norm);
+    const looseAlt = normalizeLoose(alt.norm);
+    const looseLev = levenshteinSimilarity(loosePlayer, looseAlt);
+    const strictLev = levenshteinSimilarity(normalizedPlayer, alt.norm);
     const tok = tokenSimilarity(normalizedPlayer, alt.norm);
     const phonetic = phoneticKey(normalizedPlayer) !== '' && phoneticKey(normalizedPlayer) === phoneticKey(alt.norm);
-    const overall = (0.6 * lev) + (0.25 * tok) + (0.15 * (phonetic ? 1 : 0));
+    const overall = (0.4 * looseLev) + (0.35 * strictLev) + (0.15 * tok) + (0.10 * (phonetic ? 1 : 0));
     if (overall > bestOverall) {
       bestOverall = overall;
-      bestLev = lev;
+      bestLev = Math.max(looseLev, strictLev);
       bestLen = alt.norm.length;
     }
   }
 
   const minLen = Math.min(normalizedPlayer.length, bestLen);
-  if (minLen < 4) return { isCorrect: false, points: 0 };
+  if (minLen < 4) return { isCorrect: false, isPartial: false, points: 0, similarity: bestOverall };
 
-  if (bestOverall >= 0.88 && bestLev >= 0.85) {
-    return { isCorrect: true, points: 10 };
+  if (bestOverall >= 0.65 && bestLev >= 0.6) {
+    const points = Math.min(14, Math.max(4, Math.round(12 * bestOverall)));
+    return { isCorrect: false, isPartial: true, points, similarity: bestOverall };
   }
 
-  if (bestOverall >= 0.78 && bestLev >= 0.75 && minLen >= 7) {
-    return { isCorrect: true, points: 8 };
-  }
-
-  return { isCorrect: false, points: 0 };
+  return { isCorrect: false, isPartial: false, points: 0, similarity: bestOverall };
 };
 
 interface GameContextType {
@@ -404,6 +405,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const playerAnswer = (p.last_answer_val || "").trim();
           let isCorrect = false;
           let points = 0;
+          let isPartial = false;
+          let similarity = null as number | null;
 
           if (!playerAnswer) {
               isCorrect = false;
@@ -415,13 +418,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
               const result = scoreTextAnswer(playerAnswer, currentQ.correctAnswer);
               isCorrect = result.isCorrect;
+              isPartial = result.isPartial;
               points = result.points;
+              similarity = result.similarity;
           }
 
           return {
               ...p,
               score: p.score + points,
               last_answer_correct: isCorrect,
+              last_answer_partial: isPartial,
+              last_answer_similarity: similarity,
           };
       });
 
@@ -626,7 +633,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     if (timerRef.current) clearInterval(timerRef.current);
     
-    const resetPlayers = room.players.map(p => ({ ...p, last_answer_correct: null, last_answer_val: null }));
+    const resetPlayers = room.players.map(p => ({ 
+        ...p, 
+        last_answer_correct: null, 
+        last_answer_partial: null,
+        last_answer_similarity: null,
+        last_answer_val: null 
+    }));
     const nextIdx = room.current_question_index + 1;
     const isFinished = nextIdx >= questions.length;
     const nextStatus = isFinished ? 'finished' : 'playing';
