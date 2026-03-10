@@ -26,6 +26,100 @@ const levenshteinDistance = (a: string, b: string): number => {
   return matrix[b.length][a.length];
 };
 
+const normalizeText = (input: string): string => {
+  if (!input) return '';
+  let text = input.trim().toLocaleLowerCase('tr-TR');
+  text = text.replace(/ı/g, 'i');
+  text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  text = text.replace(/[^\p{L}\p{N}\s]/gu, ' ');
+  text = text.replace(/\s+/g, ' ').trim();
+  return text;
+};
+
+const splitAlternatives = (answer: string): string[] => {
+  if (!answer) return [];
+  const parts = answer.split('/').map(p => p.trim()).filter(Boolean);
+  return parts.length ? parts : [answer.trim()];
+};
+
+const levenshteinSimilarity = (a: string, b: string): number => {
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  const dist = levenshteinDistance(a, b);
+  return 1 - dist / maxLen;
+};
+
+const tokenSimilarity = (a: string, b: string): number => {
+  const tokensA = normalizeText(a).split(' ').filter(Boolean);
+  const tokensB = normalizeText(b).split(' ').filter(Boolean);
+  if (tokensA.length === 0 || tokensB.length === 0) return 0;
+  const setA = new Set(tokensA);
+  const setB = new Set(tokensB);
+  let intersection = 0;
+  setA.forEach(t => { if (setB.has(t)) intersection++; });
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+};
+
+const phoneticKey = (input: string): string => {
+  let text = normalizeText(input).replace(/\s+/g, '');
+  if (!text) return '';
+  text = text
+    .replace(/[çc]/g, 'c')
+    .replace(/[ğg]/g, 'g')
+    .replace(/[şs]/g, 's')
+    .replace(/[öo]/g, 'o')
+    .replace(/[üu]/g, 'u')
+    .replace(/[ıi]/g, 'i');
+  text = text.replace(/[aeiou]/g, '');
+  text = text.replace(/h/g, '');
+  text = text.replace(/(.)\1+/g, '$1');
+  return text;
+};
+
+const scoreTextAnswer = (playerAnswer: string, correctAnswer: string): { isCorrect: boolean; points: number } => {
+  const normalizedPlayer = normalizeText(playerAnswer);
+  if (!normalizedPlayer) return { isCorrect: false, points: 0 };
+
+  const alternatives = splitAlternatives(correctAnswer)
+    .map(a => ({ raw: a, norm: normalizeText(a) }))
+    .filter(a => a.norm.length > 0);
+
+  for (const alt of alternatives) {
+    if (normalizedPlayer === alt.norm) {
+      return { isCorrect: true, points: 15 };
+    }
+  }
+
+  let bestOverall = 0;
+  let bestLev = 0;
+  let bestLen = 0;
+  for (const alt of alternatives) {
+    const lev = levenshteinSimilarity(normalizedPlayer, alt.norm);
+    const tok = tokenSimilarity(normalizedPlayer, alt.norm);
+    const phonetic = phoneticKey(normalizedPlayer) !== '' && phoneticKey(normalizedPlayer) === phoneticKey(alt.norm);
+    const overall = (0.6 * lev) + (0.25 * tok) + (0.15 * (phonetic ? 1 : 0));
+    if (overall > bestOverall) {
+      bestOverall = overall;
+      bestLev = lev;
+      bestLen = alt.norm.length;
+    }
+  }
+
+  const minLen = Math.min(normalizedPlayer.length, bestLen);
+  if (minLen < 4) return { isCorrect: false, points: 0 };
+
+  if (bestOverall >= 0.88 && bestLev >= 0.85) {
+    return { isCorrect: true, points: 10 };
+  }
+
+  if (bestOverall >= 0.78 && bestLev >= 0.75 && minLen >= 7) {
+    return { isCorrect: true, points: 8 };
+  }
+
+  return { isCorrect: false, points: 0 };
+};
+
 interface GameContextType {
   room: Room | null;
   questions: Question[];
@@ -304,26 +398,24 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentQ = questionsRef.current[roomRef.current.current_question_index];
       if (!currentQ) return;
 
-      const cleanCorrect = currentQ.correctAnswer.trim().toLowerCase();
+      const cleanCorrect = normalizeText(currentQ.correctAnswer);
       
       const updatedPlayers = roomRef.current.players.map(p => {
-          const playerAnswer = (p.last_answer_val || "").trim().toLowerCase();
+          const playerAnswer = (p.last_answer_val || "").trim();
           let isCorrect = false;
           let points = 0;
 
           if (!playerAnswer) {
               isCorrect = false;
           } else if (currentQ.type === 'multiple-choice') {
-              if (playerAnswer === cleanCorrect) {
+              if (normalizeText(playerAnswer) === cleanCorrect) {
                   isCorrect = true;
                   points = 10;
               }
           } else {
-              const dist = levenshteinDistance(playerAnswer, cleanCorrect);
-              const len = cleanCorrect.length;
-              if (dist === 0) { isCorrect = true; points = 15; }
-              else if (len > 3 && dist <= 1) { isCorrect = true; points = 10; }
-              else if (len > 6 && dist <= 2) { isCorrect = true; points = 8; }
+              const result = scoreTextAnswer(playerAnswer, currentQ.correctAnswer);
+              isCorrect = result.isCorrect;
+              points = result.points;
           }
 
           return {
